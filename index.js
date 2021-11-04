@@ -16,6 +16,16 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
 });
 
+async function run() {
+  try {
+    await client.connect();
+    console.log("database connected successfully");
+  } finally {
+    // run().catch(console.dir);
+  }
+}
+run().catch(console.dir);
+
 app.get("/", (req, res) => {
   res.send("Hello doctors portal!");
 });
