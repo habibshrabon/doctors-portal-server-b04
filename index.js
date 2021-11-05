@@ -7,9 +7,9 @@ const { MongoClient } = require("mongodb");
 const port = process.env.PORT || 5000;
 
 app.use(cors());
+app.use(express.json());
 
 //connect
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.ewzy7.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
@@ -19,9 +19,13 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     await client.connect();
-    console.log("database connected successfully");
+    // console.log("database connected successfully");
+    const database = client.db("doctors_portal");
+    const appointmentsCollection = database.collection("appointments");
+
+    app.post("/appointments", async (req, res) => {});
   } finally {
-    // run().catch(console.dir);
+    // await client.close();
   }
 }
 run().catch(console.dir);
