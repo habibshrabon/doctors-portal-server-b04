@@ -51,7 +51,7 @@ async function run() {
 
     app.put("/users", async (req, res) => {
       const user = req.body;
-      console.log("PUT", user);
+      // console.log("PUT", user);
       const filter = { email: user.email };
       const options = { upsert: true };
       const updateDoc = { $set: user };
@@ -60,6 +60,15 @@ async function run() {
         updateDoc,
         options
       );
+      res.json(result);
+    });
+
+    app.put("/users/admin", async (req, res) => {
+      const user = req.body;
+      console.log("PUT", user);
+      const filter = { email: user.email };
+      const updateDoc = { $set: { role: "admin" } };
+      const result = await usersCollection.updateOne(filter, updateDoc);
       res.json(result);
     });
   } finally {
