@@ -1,10 +1,19 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const admin = require("firebase-admin");
 require("dotenv").config();
 const { MongoClient } = require("mongodb");
+const ObjectId = require("mongodb").ObjectId;
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const port = process.env.PORT || 5000;
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 app.use(cors());
 app.use(express.json());
@@ -16,6 +25,17 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
 });
 
+async function verifyToken(req, res, next) {
+  if (req.headers.authorization.startsWith("Bearer")) {
+    const token = req.headers.authorization.split(" ")[1];
+    try {
+      const decodedUser = await admin.auth().verifyIdToken(token);
+      req.decodedEmail = decodedUser.email;
+    } catch {}
+  }
+  next();
+}
+
 async function run() {
   try {
     await client.connect();
@@ -24,9 +44,9 @@ async function run() {
     const appointmentsCollection = database.collection("appointments");
     const usersCollection = database.collection("users");
 
-    app.get("/appointments", async (req, res) => {
+    app.get("/appointments", verifyToken, async (req, res) => {
       const email = req.query.email;
-      const date = new Date(req.query.date).toLocaleDateString();
+      const date = req.query.date;
       // console.log(date);
       const query = { email: email, date: date };
       // console.log(query);
@@ -39,6 +59,26 @@ async function run() {
       const appointment = req.body;
       const result = await appointmentsCollection.insertOne(appointment);
       // console.log(result);
+      res.json(result);
+    });
+
+    app.put("/appointments/:id", async (req, res) => {
+      const id = req.params.id;
+      const payment = req.body;
+      const filter = { _id: ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          payment: payment,
+        },
+      };
+      const result = await appointmentsCollection.updateOne(filter, updateDoc);
+      res.json(result);
+    });
+
+    app.get("/appointments/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const result = await appointmentsCollection.findOne(query);
       res.json(result);
     });
 
@@ -74,13 +114,33 @@ async function run() {
       res.json(result);
     });
 
-    app.put("/users/admin", async (req, res) => {
+    app.put("/users/admin", verifyToken, async (req, res) => {
       const user = req.body;
-      console.log("PUT", user);
-      const filter = { email: user.email };
-      const updateDoc = { $set: { role: "admin" } };
-      const result = await usersCollection.updateOne(filter, updateDoc);
-      res.json(result);
+      const requester = req.decodedEmail;
+      if (requester) {
+        const requesterAccount = await usersCollection.findOne({
+          email: requester,
+        });
+        if (requesterAccount.role === "admin") {
+          const filter = { email: user.email };
+          const updateDoc = { $set: { role: "admin" } };
+          const result = await usersCollection.updateOne(filter, updateDoc);
+          res.json(result);
+        }
+      } else {
+        res.status(403).json({ message: "you do not have access to " });
+      }
+    });
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = paymentInfo.price * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        currency: "usd",
+        amount: amount,
+        payment_method_types: ["card"],
+      });
+      res.json({ clientSecret: paymentIntent.client_secret });
     });
   } finally {
     // await client.close();
@@ -95,3 +155,10 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`listening at :${port}`);
 });
+// app.get('/users')
+// app.post('/users')
+// app.get('/users/:id')
+// app.put('/users/:id');
+// app.delete('/users/:id')
+// users: get
+// users: post
